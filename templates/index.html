@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reverser Agent</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+
+<body>
+    {% set session_controls = true %}
+    {% include 'sub/sidebar.html' %}
+
+    <!-- Main Content Area -->
+    <div class="main-content" id="mainContent">
+        <div class="header">
+            <div class="header-content">
+                <button class="mobile-menu-btn" id="mobileMenuBtn" onclick="toggleSidebar()">
+                    <span class="hamburger"></span>
+                    <span class="hamburger"></span>
+                    <span class="hamburger"></span>
+                </button>
+                <div class="header-title">
+                    <h1>Conversational Mode</h1>
+                  <!--  <p>Ask questions about your CSV data in natural language. I remember our conversation!</p> -->
+                </div>
+            </div>
+        </div>
+
+
+        <div class="chat-container">
+            <div class="messages" id="messages">
+                <div class="message assistant">
+                    <div class="message-avatar">AI</div>
+                    <div class="message-content">
+                        <p>Hello! I'm your conversational Reverser assistant.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="input-container">
+            <form class="input-form" id="queryForm">
+                <input type="file" id="imageUpload" accept="image/*" style="display: none;">
+                <label for="imageUpload" class="upload-btn">🖼️ Upload Image</label>
+                <textarea class="input-field" id="queryInput" placeholder="Describe the image or ask a question..." rows="3"></textarea>
+                <button type="submit" class="send-btn" id="sendBtn">Send</button>
+            </form>
+        </div>
+
+        <script>
+            const messagesContainer = document.getElementById('messages');
+            const queryForm = document.getElementById('queryForm');
+            const queryInput = document.getElementById('queryInput');
+            const sendBtn = document.getElementById('sendBtn');
+            const imageUpload = document.getElementById('imageUpload');
+            let uploadedImage = null;
+
+            imageUpload.addEventListener('change', function(event) {
+                const file = event.target.files[0];
+                if (file) {
+                    uploadedImage = file;
+                    // Optionally, display a preview or confirmation that an image is selected
+                    queryInput.placeholder = `Image selected: ${file.name}. Add a description or send directly.`;
+                } else {
+                    uploadedImage = null;
+                    queryInput.placeholder = "Describe the image or ask a question...";
+                }
+            });
+
+            function addMessage(content, isUser = false, imageUrl = null) {
+                const messageDiv = document.createElement('div');
+                messageDiv.className = `message ${isUser ? 'user' : 'assistant'}`;
+
+                const avatar = document.createElement('div');
+                avatar.className = 'message-avatar';
+                avatar.textContent = isUser ? 'U' : 'AI';
+
+                const messageContent = document.createElement('div');
+                messageContent.className = 'message-content';
+
+                if (imageUrl) {
+                    const img = document.createElement('img');
+                    img.src = imageUrl;
+                    img.style.maxWidth = '200px';
+                    img.style.display = 'block';
+                    img.style.marginBottom = '10px';
+                    messageContent.appendChild(img);
+                }
+
+                if (isUser) {
+                    const formattedContent = content.replace(/\n/g, '<br>');
+                    messageContent.innerHTML += formattedContent;
+                } else {
+                    messageContent.innerHTML += content;
+                }
+
+                messageDiv.appendChild(avatar);
+                messageDiv.appendChild(messageContent);
+                messagesContainer.appendChild(messageDiv);
+
+                messagesContainer.scrollTop = messagesContainer.scrollHeight;
+
+                return messageDiv;
+            }
+
+            function addLoadingMessage() {
+                const loadingContent = '<div class="loading">Processing your request...</div>';
+                addMessage(loadingContent);
+                return messagesContainer.lastElementChild;
+            }
+
+            async function chatWithAgent(query, imageFile) {
+                const formData = new FormData();
+                formData.append('user_query', query);
+                if (imageFile) {
+                    formData.append('image', imageFile);
+                }
+
+                const response = await fetch('/chat', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                return await response.json();
+            }
+
+            window.userQueries = {};
+            let messageCounter = 0;
+            let currentSessionId = 'default';
+
+            window.clearConversation = async function () {
+                try {
+                    const response = await fetch(`/conversation/${currentSessionId}/clear`, {
+                        method: 'POST'
+                    });
+
+                    if (response.ok) {
+                        const messages = document.querySelectorAll('.message:not(.assistant):not(:first-child)');
+                        messages.forEach(msg => msg.remove());
+
+                        messageCounter = 0;
+                        window.userQueries = {};
+                        uploadedImage = null; // Clear uploaded image
+                        queryInput.placeholder = "Describe the image or ask a question..."; // Reset placeholder
+
+                        addMessage('<p>Conversation history cleared. You can start fresh!</p>');
+                    }
+                } catch (error) {
+                    addMessage(`<div class="error-message">Error clearing conversation: ${error.message}</div>`);
+                }
+            };
+
+            window.newSession = function () {
+                currentSessionId = 'session_' + Date.now();
+                document.getElementById('sessionId').textContent = currentSessionId;
+
+                const messages = document.querySelectorAll('.message:not(.assistant):not(:first-child)');
+                messages.forEach(msg => msg.remove());
+
+                messageCounter = 0;
+                window.userQueries = {};
+                uploadedImage = null; // Clear uploaded image
+                queryInput.placeholder = "Describe the image or ask a question..."; // Reset placeholder
+
+                addMessage('<p>New conversation session started! I\'m ready for your questions.</p>');
+            };
+
+            queryForm.addEventListener('submit', async function (e) {
+                e.preventDefault();
+                const query = queryInput.value.trim();
+
+                if (!query && !uploadedImage) {
+                    console.log("No query or image to send.");
+                    return; // Don't send empty messages
+                }
+
+                let imageUrl = null;
+                if (uploadedImage) {
+                    imageUrl = URL.createObjectURL(uploadedImage);
+                    console.log("Uploaded image details:", uploadedImage);
+                }
+
+                addMessage(query, true, imageUrl);
+                queryInput.value = '';
+                sendBtn.disabled = true;
+                imageUpload.value = ''; // Clear file input
+                
+                const currentImageToSend = uploadedImage; // Store for this submission
+                uploadedImage = null; // Reset for next input
+                queryInput.placeholder = "Describe the image or ask a question..."; // Reset placeholder
+
+                const loadingMsg = addLoadingMessage();
+
+                try {
+                    const result = await chatWithAgent(query, currentImageToSend); // Use the stored image
+                    messagesContainer.removeChild(loadingMsg);
+
+                    const messageId = ++messageCounter;
+                    window.userQueries[messageId] = query;
+
+                    const assistantMsg = addMessage(result.response);
+                    assistantMsg.setAttribute('data-message-id', messageId);
+
+                } catch (error) {
+                    messagesContainer.removeChild(loadingMsg);
+                    addMessage(`<div class="error-message">Error: ${error.message}</div>`);
+                } finally {
+                    sendBtn.disabled = false;
+                    queryInput.focus();
+                }
+            });
+
+            queryInput.addEventListener('keydown', async function (e) {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    queryForm.dispatchEvent(new Event('submit')); // Trigger form submission
+                }
+            });
+
+            queryInput.focus();
+        </script>
+
+        {% include 'sub/sidebar_js.html' %}
+    </div>
+</body>
+
+</html>
