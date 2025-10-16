@@ -1,0 +1,8 @@
+__pycache__/
+data/
+*.json
+*.env
+*.md
+.gitignore
+credentials.json
+.vscode/

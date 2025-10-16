@@ -1,0 +1,7 @@
+fastapi==0.116.1
+langchain_experimental==0.3.4
+langchain_google_genai==2.1.8
+pandas==2.3.1
+python-dotenv==1.1.1
+uvicorn==0.35.0
+Pillow==10.3.0
